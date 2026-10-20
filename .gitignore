@@ -1,0 +1,26 @@
+# Datos de comprobantes (contienen datos de terceros, no se suben)
+data/
+fotos/
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.HEIC
+*.csv
+*.xlsx
+*.xls
+*.db
+*.sqlite
+
+# Credenciales
+.env
+*.json.key
+credentials*.json
+token*.json
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
