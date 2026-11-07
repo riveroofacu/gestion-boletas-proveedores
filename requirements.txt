@@ -1,0 +1,5 @@
+# PaddlePaddle (CPU) se instala aparte, ver instalar.bat
+paddleocr>=3.0,<4
+streamlit>=1.50
+pandas
+requests

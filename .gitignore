@@ -24,3 +24,9 @@ __pycache__/
 .ipynb_checkpoints/
 .venv/
 venv/
+
+# Sistema: base de datos, fotos cargadas y configuración con datos reales
+datos/
+tmp_ocr/
+config/proveedores.json
+config/ajustes.json

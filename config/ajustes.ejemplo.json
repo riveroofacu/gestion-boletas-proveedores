@@ -1,0 +1,7 @@
+{
+  "_comentario": "Copiá este archivo como config/ajustes.json y completalo. Ese archivo no se sube al repositorio.",
+  "clave": "elegí-una-clave",
+  "telegram_token": "",
+  "telegram_chat_id": "",
+  "dias_aviso": 7
+}
