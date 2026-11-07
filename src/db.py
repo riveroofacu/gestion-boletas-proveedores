@@ -16,8 +16,9 @@ CREATE TABLE IF NOT EXISTS precios (
     id            INTEGER PRIMARY KEY,
     proveedor     TEXT NOT NULL,
     producto      TEXT NOT NULL,
-    precio_kg     REAL NOT NULL,
-    vigente_desde TEXT NOT NULL
+    precio_kg     REAL NOT NULL,     -- precio por unidad (kilo o cajón)
+    vigente_desde TEXT NOT NULL,
+    unidad        TEXT NOT NULL DEFAULT 'kg'
 );
 CREATE TABLE IF NOT EXISTS comprobantes (
     id                INTEGER PRIMARY KEY,
@@ -46,6 +47,13 @@ CREATE TABLE IF NOT EXISTS pagos (
     nro_cheque  TEXT,
     fecha_cobro TEXT,
     creado      TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS items (
+    comprobante_id INTEGER NOT NULL REFERENCES comprobantes(id),
+    producto       TEXT NOT NULL,
+    unidad         TEXT NOT NULL,
+    cantidad       REAL NOT NULL,
+    precio         REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS aplicaciones (
     pago_id        INTEGER NOT NULL REFERENCES pagos(id),
@@ -79,9 +87,9 @@ def ahora():
 # ---------------------------------------------------------------------------
 # Precios
 # ---------------------------------------------------------------------------
-def guardar_precio(con, proveedor, producto, precio_kg, vigente_desde):
-    con.execute("INSERT INTO precios (proveedor, producto, precio_kg, vigente_desde) VALUES (?,?,?,?)",
-                (proveedor, producto.strip(), float(precio_kg), iso(vigente_desde)))
+def guardar_precio(con, proveedor, producto, precio_kg, vigente_desde, unidad="kg"):
+    con.execute("INSERT INTO precios (proveedor, producto, precio_kg, vigente_desde, unidad) VALUES (?,?,?,?,?)",
+                (proveedor, producto.strip(), float(precio_kg), iso(vigente_desde), unidad or "kg"))
     con.commit()
 
 
@@ -94,7 +102,8 @@ def importar_precios(con, ruta_csv):
     with open(ruta_csv, encoding="utf-8") as f:
         filas = list(csv.DictReader(f))
     for r in filas:
-        guardar_precio(con, r["proveedor"], r["producto"], float(r["precio_kg"]), r["vigente_desde"])
+        guardar_precio(con, r["proveedor"], r["producto"], float(r["precio_kg"]), r["vigente_desde"],
+                       r.get("unidad") or "kg")
     return len(filas)
 
 
@@ -117,9 +126,29 @@ def precio_vigente(con, proveedor, producto, fecha):
     return f["precio_kg"] if f else None
 
 
+def unidad_de(con, proveedor, producto):
+    f = con.execute("SELECT unidad FROM precios WHERE proveedor=? AND producto=? ORDER BY id DESC LIMIT 1",
+                    (proveedor, producto)).fetchone()
+    return f["unidad"] if f else "kg"
+
+
+def precios_vigentes(con, proveedor, fecha):
+    """Todos los productos del proveedor con el precio que vale para esa fecha."""
+    return [{"producto": p, "unidad": unidad_de(con, proveedor, p), "precio": precio_vigente(con, proveedor, p, fecha)}
+            for p in productos(con, proveedor)]
+
+
+def producto_frecuente(con, proveedor):
+    f = con.execute("""SELECT i.producto FROM items i JOIN comprobantes c ON c.id=i.comprobante_id
+                       WHERE c.proveedor=? GROUP BY i.producto ORDER BY COUNT(*) DESC LIMIT 1""",
+                    (proveedor,)).fetchone()
+    return f["producto"] if f else None
+
+
 def lista_precios(con):
     return [dict(f) for f in con.execute(
-        "SELECT proveedor, producto, precio_kg, vigente_desde FROM precios ORDER BY proveedor, producto, vigente_desde")]
+        """SELECT proveedor, producto, unidad, precio_kg, vigente_desde FROM precios
+           ORDER BY proveedor, producto, vigente_desde""")]
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +163,9 @@ def existe_comprobante(con, proveedor, nro):
 
 def guardar_comprobante(con, proveedor, nro, fecha, importe, total_kg=None, producto=None,
                         precio_kg=None, saldo_anterior=None, foto=None, extraido=None,
-                        confirmado=None, campos_corregidos=None, segundos_ocr=None, segundos_carga=None):
+                        confirmado=None, campos_corregidos=None, segundos_ocr=None, segundos_carga=None,
+                        items=None):
+    """items: lista de {producto, unidad, cantidad, precio} cuando el importe sale de kilos por precio."""
     cur = con.execute(
         """INSERT INTO comprobantes (proveedor, nro, fecha, total_kg, producto, precio_kg, importe,
                saldo_anterior, foto, extraido, confirmado, campos_corregidos, segundos_ocr, segundos_carga, creado)
@@ -142,8 +173,15 @@ def guardar_comprobante(con, proveedor, nro, fecha, importe, total_kg=None, prod
         (proveedor, nro or None, iso(fecha), total_kg, producto, precio_kg, float(importe),
          saldo_anterior, foto, _json(extraido), _json(confirmado),
          campos_corregidos, segundos_ocr, segundos_carga, ahora()))
+    for it in items or []:
+        con.execute("INSERT INTO items (comprobante_id, producto, unidad, cantidad, precio) VALUES (?,?,?,?,?)",
+                    (cur.lastrowid, it["producto"], it["unidad"], float(it["cantidad"]), float(it["precio"])))
     con.commit()
     return cur.lastrowid
+
+
+def items_de(con, cid):
+    return [dict(f) for f in con.execute("SELECT * FROM items WHERE comprobante_id=?", (cid,))]
 
 
 def comprobantes(con, proveedor=None):
@@ -167,6 +205,7 @@ def borrar_comprobante(con, cid):
     """Solo si no tiene pagos asignados (para corregir una carga equivocada)."""
     if con.execute("SELECT 1 FROM aplicaciones WHERE comprobante_id=?", (cid,)).fetchone():
         return False
+    con.execute("DELETE FROM items WHERE comprobante_id=?", (cid,))
     con.execute("DELETE FROM comprobantes WHERE id=?", (cid,))
     con.commit()
     return True

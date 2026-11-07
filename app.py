@@ -30,7 +30,6 @@ for c in (CARPETA_FOTOS, CARPETA_TMP):
     os.makedirs(c, exist_ok=True)
 
 OTRO_PROVEEDOR = "Otro (no está en la lista)"
-VARIOS = "Varios productos (cargo el importe a mano)"
 NUEVO_PRODUCTO = "Otro producto"
 
 st.set_page_config(page_title="Boletas - Cabaña Santa Lucía", page_icon="🧾", layout="centered")
@@ -161,33 +160,17 @@ def pagina_cargar():
     if fecha > date.today():
         st.warning("La fecha es posterior a hoy.")
 
-    # Importe: el impreso, o kilos por el precio acordado
-    importe, producto, precio, guardar_precio = None, None, None, False
+    # Importe: el impreso, o cantidad por precio de cada producto
+    importe, items, precios_a_guardar = None, [], []
     if impreso:
         importe = impreso
-    elif kilos and prov:
-        prods = db.productos(con, prov)
-        producto = st.selectbox("Producto", prods + [NUEVO_PRODUCTO, VARIOS], key=f"producto_{k}")
-        if producto == VARIOS:
+    elif prov:
+        a_mano = st.checkbox("Cargar el importe total a mano", key=f"a_mano_{k}")
+        if a_mano:
             importe = st.number_input("Importe total", min_value=0.0, step=100.0, format="%.2f", value=None,
                                       key=f"imp_mano_{k}")
-            producto = "Varios"
         else:
-            if producto == NUEVO_PRODUCTO:
-                producto = st.text_input("Nombre del producto", key=f"prod_nuevo_{k}").strip()
-            precio = db.precio_vigente(con, prov, producto, fecha) if producto else None
-            if precio is None:
-                precio = st.number_input("Precio por kilo", min_value=0.0, step=100.0, format="%.2f",
-                                         value=None, key=f"precio_{k}")
-                guardar_precio = st.checkbox("Guardar este precio para las próximas boletas", value=True,
-                                             key=f"guardar_precio_{k}")
-            else:
-                st.caption(f"Precio acordado {pesos(precio)} por kilo")
-            if precio:
-                importe = round(kilos * precio, 2)
-    elif not impreso:
-        importe = st.number_input("Importe total", min_value=0.0, step=100.0, format="%.2f", value=None,
-                                  key=f"imp_solo_{k}")
+            importe, items, precios_a_guardar = tabla_productos(prov, fecha, kilos, k)
 
     if importe:
         st.subheader(f"Importe {pesos(importe)}")
@@ -201,11 +184,13 @@ def pagina_cargar():
     if st.button("Guardar boleta", type="primary", disabled=bool(faltan)):
         confirmado = {"proveedor": prov, "nro_comprobante": nro or None, "fecha_emision": fecha.isoformat(),
                       "total_pesos": impreso or None, "total_kg": kilos or None}
-        if guardar_precio and producto and precio:
-            db.guardar_precio(con, prov, producto, precio, fecha)
+        for pr in precios_a_guardar:
+            db.guardar_precio(con, prov, pr["producto"], pr["precio"], fecha, pr["unidad"])
+        unico = items[0] if len(items) == 1 else None
         cid = db.guardar_comprobante(
             con, prov, nro, fecha, importe, total_kg=kilos or None,
-            producto=producto, precio_kg=precio, saldo_anterior=saldo_ant,
+            producto=unico["producto"] if unico else ("Varios" if items else None),
+            precio_kg=unico["precio"] if unico else None, saldo_anterior=saldo_ant, items=items,
             extraido=ext, confirmado=confirmado, campos_corregidos=comparar.correcciones(ext, confirmado),
             segundos_ocr=lec["seg_ocr"], segundos_carga=round(time.time() - lec["t0"], 1))
         destino = os.path.join(CARPETA_FOTOS, f"{cid}.jpg")
@@ -218,6 +203,58 @@ def pagina_cargar():
         st.rerun()
     if faltan:
         st.caption("Falta completar " + " y ".join(faltan) + ".")
+
+
+def tabla_productos(prov, fecha, kilos, k):
+    """Un casillero por producto del proveedor: se pone la cantidad que trae la boleta y el importe
+    se calcula con el precio vigente a la fecha de la boleta. Devuelve (importe, items, precios_a_guardar)."""
+    vigentes = db.precios_vigentes(con, prov, fecha)
+    frecuente = db.producto_frecuente(con, prov) or (vigentes[0]["producto"] if len(vigentes) == 1 else None)
+    st.markdown("**Productos de la boleta**")
+    st.caption("Poné la cantidad de cada producto que vino y dejá vacío el resto.")
+    cantidades = {}
+    for i, v in enumerate(vigentes):
+        precio_txt = f"{pesos(v['precio'])} por {v['unidad']}" if v["precio"] else "sin precio"
+        previo = kilos if (kilos and v["producto"] == frecuente and v["unidad"] == "kg") else None
+        cantidades[v["producto"]] = st.number_input(
+            f"{v['producto']} · {precio_txt}", min_value=0.0, format="%.2f", value=previo,
+            step=0.1 if v["unidad"] == "kg" else 1.0, key=f"cant_{k}_{prov}_{i}")
+
+    precios = {v["producto"]: v["precio"] for v in vigentes}
+    unidades = {v["producto"]: v["unidad"] for v in vigentes}
+    guardar = []
+    with st.expander("Cambió un precio o falta un producto"):
+        cual = st.selectbox("Producto", list(precios) + [NUEVO_PRODUCTO], key=f"cambio_prod_{k}_{prov}")
+        if cual == NUEVO_PRODUCTO:
+            cual = st.text_input("Nombre del producto", key=f"cambio_nombre_{k}_{prov}").strip()
+            unidades[cual] = st.selectbox("Se cobra por", ["kg", "cajón", "unidad"], key=f"cambio_unidad_{k}_{prov}")
+            cantidades[cual] = st.number_input("Cantidad", min_value=0.0, format="%.2f", value=None,
+                                               key=f"cambio_cant_{k}_{prov}")
+        nuevo = st.number_input("Precio nuevo", min_value=0.0, step=100.0, format="%.2f", value=None,
+                                key=f"cambio_precio_{k}_{prov}")
+        st.caption("El precio se guarda desde la fecha de esta boleta; las boletas anteriores no cambian.")
+        if cual and nuevo:
+            precios[cual] = nuevo
+            guardar.append({"producto": cual, "unidad": unidades[cual], "precio": nuevo})
+
+    items, sin_precio = [], []
+    for prod, cant in cantidades.items():
+        if not prod or not cant:
+            continue
+        if not precios.get(prod):
+            sin_precio.append(prod)
+            continue
+        items.append({"producto": prod, "unidad": unidades[prod], "cantidad": cant, "precio": precios[prod]})
+    if sin_precio:
+        st.warning("Falta el precio de " + ", ".join(sin_precio) + ". Cargalo en «Cambió un precio o falta un producto».")
+    kg_items = sum(i["cantidad"] for i in items if i["unidad"] == "kg")
+    if kilos and items and abs(kg_items - kilos) > 0.05:
+        st.warning(f"Los kilos de los productos suman {kg_items:g} y la boleta dice {kilos:g} en total. Revisalo.")
+    if not items or sin_precio:
+        return None, items, guardar
+    for i in items:
+        st.caption(f"{i['producto']} {i['cantidad']:g} {i['unidad']} × {pesos(i['precio'])} = {pesos(i['cantidad'] * i['precio'])}")
+    return round(sum(i["cantidad"] * i["precio"] for i in items), 2), items, guardar
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +384,11 @@ def pagina_panel():
                                format_func=lambda i: vista.set_index("Id").loc[i, ["Fecha", "Proveedor", "Nº"]]
                                .astype(str).str.cat(sep=" · "))
             fila = next(c for c in comps if c["id"] == cid)
+            its = db.items_de(con, cid)
+            if its:
+                st.dataframe(pd.DataFrame([{"Producto": i["producto"], "Cantidad": f"{i['cantidad']:g} {i['unidad']}",
+                                            "Precio": pesos(i["precio"]), "Subtotal": pesos(i["cantidad"] * i["precio"])}
+                                           for i in its]), hide_index=True)
             if fila["foto"] and os.path.exists(os.path.join(BASE, fila["foto"])):
                 st.image(os.path.join(BASE, fila["foto"]), width="stretch")
             if st.button("Borrar esta boleta"):
@@ -373,15 +415,15 @@ def pagina_panel():
 # Precios
 # ---------------------------------------------------------------------------
 def pagina_precios():
-    st.header("Precios por kilo")
-    st.caption("Se usan para calcular el importe de las boletas que solo traen kilos. "
+    st.header("Precios")
+    st.caption("Se usan para calcular el importe de las boletas que solo traen kilos o cajones. "
                "Cuando cambia un precio se carga uno nuevo con la fecha desde la que vale; el anterior queda "
                "para las boletas viejas.")
     lp = db.lista_precios(con)
     if lp:
         df = pd.DataFrame(lp)
         vigentes = df.sort_values("vigente_desde").groupby(["proveedor", "producto"], as_index=False).last()
-        vigentes["Precio"] = vigentes["precio_kg"].map(pesos)
+        vigentes["Precio"] = vigentes["precio_kg"].map(pesos) + " / " + vigentes["unidad"]
         vigentes["Desde"] = vigentes["vigente_desde"].map(dmy)
         st.dataframe(vigentes[["proveedor", "producto", "Precio", "Desde"]]
                      .rename(columns={"proveedor": "Proveedor", "producto": "Producto"}), hide_index=True)
@@ -392,11 +434,14 @@ def pagina_precios():
     prod = st.selectbox("Producto", prods + [NUEVO_PRODUCTO], key="precio_prod")
     if prod == NUEVO_PRODUCTO:
         prod = st.text_input("Nombre del producto", key="precio_prod_nuevo").strip()
-    c1, c2 = st.columns(2)
-    precio = c1.number_input("Precio por kilo", min_value=0.0, step=100.0, format="%.2f", value=None)
-    desde = c2.date_input("Vale desde", value=date.today(), format="DD/MM/YYYY")
+    c1, c2, c3 = st.columns(3)
+    unidad = c1.selectbox("Por", ["kg", "cajón", "unidad"],
+                          index=["kg", "cajón", "unidad"].index(db.unidad_de(con, prov, prod))
+                          if prod and db.unidad_de(con, prov, prod) in ("kg", "cajón", "unidad") else 0)
+    precio = c2.number_input("Precio", min_value=0.0, step=100.0, format="%.2f", value=None)
+    desde = c3.date_input("Vale desde", value=date.today(), format="DD/MM/YYYY")
     if st.button("Guardar precio", type="primary", disabled=not (prov and prod and precio)):
-        db.guardar_precio(con, prov, prod, precio, desde)
+        db.guardar_precio(con, prov, prod, precio, desde, unidad)
         st.session_state.mensaje = f"Precio de {prod} ({prov}) guardado."
         st.rerun()
 
