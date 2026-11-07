@@ -54,7 +54,9 @@ def dmy(iso):
 
 @st.cache_resource
 def conexion():
-    return db.conectar(os.path.join(CARPETA_DATOS, "boletas.db"))
+    c = db.conectar(os.path.join(CARPETA_DATOS, "boletas.db"))
+    db.importar_precios(c, os.path.join(BASE, "config", "precios_iniciales.csv"))
+    return c
 
 
 def proveedores_config():

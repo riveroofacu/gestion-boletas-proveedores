@@ -85,6 +85,19 @@ def guardar_precio(con, proveedor, producto, precio_kg, vigente_desde):
     con.commit()
 
 
+def importar_precios(con, ruta_csv):
+    """Carga los precios iniciales desde un CSV, solo si la tabla todavía está vacía."""
+    import csv
+    import os
+    if not os.path.exists(ruta_csv) or con.execute("SELECT 1 FROM precios LIMIT 1").fetchone():
+        return 0
+    with open(ruta_csv, encoding="utf-8") as f:
+        filas = list(csv.DictReader(f))
+    for r in filas:
+        guardar_precio(con, r["proveedor"], r["producto"], float(r["precio_kg"]), r["vigente_desde"])
+    return len(filas)
+
+
 def productos(con, proveedor):
     filas = con.execute("SELECT DISTINCT producto FROM precios WHERE proveedor=? ORDER BY producto",
                         (proveedor,)).fetchall()
