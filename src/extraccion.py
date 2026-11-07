@@ -24,6 +24,18 @@ import cv2
 # ---------------------------------------------------------------------------
 _ocr = None
 _sin_onednn = False
+# Configuración evaluada: foto a 2000 px y clasificador de orientación de renglones activado.
+AJUSTE = {"lado_max": 2000, "orientacion_renglones": True}
+
+
+def configurar(lado_max=None, orientacion_renglones=None):
+    """Permite cambiar el tamaño de la foto y la orientación de renglones (para ganar velocidad)."""
+    global _ocr
+    if lado_max:
+        AJUSTE["lado_max"] = int(lado_max)
+    if orientacion_renglones is not None and bool(orientacion_renglones) != AJUSTE["orientacion_renglones"]:
+        AJUSTE["orientacion_renglones"] = bool(orientacion_renglones)
+        _ocr = None
 
 
 def obtener_ocr():
@@ -32,8 +44,8 @@ def obtener_ocr():
     if _ocr is None:
         from paddleocr import PaddleOCR
         extra = {"enable_mkldnn": False} if _sin_onednn else {}
-        _ocr = PaddleOCR(lang="es", use_doc_orientation_classify=False,
-                         use_doc_unwarping=False, use_textline_orientation=True, **extra)
+        _ocr = PaddleOCR(lang="es", use_doc_orientation_classify=False, use_doc_unwarping=False,
+                         use_textline_orientation=AJUSTE["orientacion_renglones"], **extra)
     return _ocr
 
 
@@ -69,7 +81,7 @@ def leer_foto(ruta, carpeta_tmp="tmp_ocr"):
     """Corre el OCR y devuelve {'textos', 'cajas', 'segundos'}. Cada caja es [x1, y1, x2, y2]."""
     os.makedirs(carpeta_tmp, exist_ok=True)
     inicio = time.time()
-    chica = achicar(ruta, os.path.join(carpeta_tmp, "chica_" + os.path.basename(ruta)))
+    chica = achicar(ruta, os.path.join(carpeta_tmp, "chica_" + os.path.basename(ruta)), AJUSTE["lado_max"])
     textos, cajas = [], []
     for res in _predecir(chica):
         res.save_to_json(carpeta_tmp)

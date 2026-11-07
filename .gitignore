@@ -31,3 +31,5 @@ tmp_ocr/
 config/proveedores.json
 config/ajustes.json
 config/precios_iniciales.csv
+fotos_prueba/
+resultado_velocidad.txt

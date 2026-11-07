@@ -92,6 +92,7 @@ con = conexion()
 @st.cache_resource(show_spinner="Preparando el lector de boletas (solo la primera vez)...")
 def lector_listo():
     """Carga el OCR al abrir la app, así la primera boleta no tarda de más."""
+    extraccion.configurar(ajustes.get("lado_max"), ajustes.get("orientacion_renglones"))
     try:
         extraccion.obtener_ocr()
     except Exception:
