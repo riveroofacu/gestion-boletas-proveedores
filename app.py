@@ -87,6 +87,19 @@ if ajustes.get("clave") and not st.session_state.get("adentro"):
     st.stop()
 
 con = conexion()
+
+
+@st.cache_resource(show_spinner="Preparando el lector de boletas (solo la primera vez)...")
+def lector_listo():
+    """Carga el OCR al abrir la app, así la primera boleta no tarda de más."""
+    try:
+        extraccion.obtener_ocr()
+    except Exception:
+        traceback.print_exc()
+    return True
+
+
+lector_listo()
 pagina = st.segmented_control("Sección", ["Cargar boleta", "Pagos", "Panel", "Precios"],
                               default="Cargar boleta", label_visibility="collapsed", key="pagina")
 pagina = pagina or "Cargar boleta"
@@ -249,8 +262,10 @@ def tabla_productos(prov, fecha, kilos, k):
         items.append({"producto": prod, "unidad": unidades[prod], "cantidad": cant, "precio": precios[prod]})
     if sin_precio:
         st.warning("Falta el precio de " + ", ".join(sin_precio) + ". Cargalo en «Cambió un precio o falta un producto».")
+    # Algunas planillas suman en el total también los cajones, así que se acepta cualquiera de las dos sumas
     kg_items = sum(i["cantidad"] for i in items if i["unidad"] == "kg")
-    if kilos and items and abs(kg_items - kilos) > 0.05:
+    todo = sum(i["cantidad"] for i in items)
+    if kilos and items and abs(kg_items - kilos) > 0.05 and abs(todo - kilos) > 0.05:
         st.warning(f"Los kilos de los productos suman {kg_items:g} y la boleta dice {kilos:g} en total. Revisalo.")
     if not items or sin_precio:
         return None, items, guardar

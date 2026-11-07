@@ -108,7 +108,8 @@ def importar_precios(con, ruta_csv):
 
 
 def productos(con, proveedor):
-    filas = con.execute("SELECT DISTINCT producto FROM precios WHERE proveedor=? ORDER BY producto",
+    """En el orden en que se cargaron (el mismo de la planilla del proveedor)."""
+    filas = con.execute("SELECT producto FROM precios WHERE proveedor=? GROUP BY producto ORDER BY MIN(id)",
                         (proveedor,)).fetchall()
     return [f["producto"] for f in filas]
 
