@@ -1,4 +1,4 @@
-# PaddlePaddle (CPU) se instala aparte, ver instalar.bat
+# PaddlePaddle (CPU) 3.2.2 se instala aparte, ver instalar.bat. La 3.3.x falla en CPU con oneDNN.
 paddleocr>=3.0,<4
 streamlit>=1.50
 pandas

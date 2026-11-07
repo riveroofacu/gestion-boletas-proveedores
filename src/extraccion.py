@@ -23,6 +23,7 @@ import cv2
 # OCR
 # ---------------------------------------------------------------------------
 _ocr = None
+_sin_onednn = False
 
 
 def obtener_ocr():
@@ -30,9 +31,24 @@ def obtener_ocr():
     global _ocr
     if _ocr is None:
         from paddleocr import PaddleOCR
+        extra = {"enable_mkldnn": False} if _sin_onednn else {}
         _ocr = PaddleOCR(lang="es", use_doc_orientation_classify=False,
-                         use_doc_unwarping=False, use_textline_orientation=True)
+                         use_doc_unwarping=False, use_textline_orientation=True, **extra)
     return _ocr
+
+
+def _predecir(ruta):
+    """Algunas versiones de PaddlePaddle para CPU (3.3.x) fallan con la aceleración oneDNN.
+    Si pasa eso, se vuelve a cargar el OCR sin oneDNN (más lento, pero funciona)."""
+    global _ocr, _sin_onednn
+    try:
+        return list(obtener_ocr().predict(ruta))
+    except NotImplementedError as e:
+        if _sin_onednn or "ConvertPirAttribute" not in str(e):
+            raise
+        print("Aviso: PaddlePaddle falló con oneDNN; se reintenta sin oneDNN (más lento).")
+        _sin_onednn, _ocr = True, None
+        return list(obtener_ocr().predict(ruta))
 
 
 def achicar(ruta, salida, lado_max=2000):
@@ -55,7 +71,7 @@ def leer_foto(ruta, carpeta_tmp="tmp_ocr"):
     inicio = time.time()
     chica = achicar(ruta, os.path.join(carpeta_tmp, "chica_" + os.path.basename(ruta)))
     textos, cajas = [], []
-    for res in obtener_ocr().predict(chica):
+    for res in _predecir(chica):
         res.save_to_json(carpeta_tmp)
         nombre = os.path.splitext(os.path.basename(chica))[0]
         archivo = sorted(glob.glob(os.path.join(carpeta_tmp, f"{nombre}*.json")))[-1]

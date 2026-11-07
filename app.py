@@ -9,6 +9,7 @@ import os
 import shutil
 import sys
 import time
+import traceback
 from datetime import date, timedelta
 
 import pandas as pd
@@ -119,6 +120,7 @@ def pagina_cargar():
                 ext = extraccion.extraer(lectura, proveedores_config())
                 seg = lectura["segundos"]
             except Exception as e:   # si falla el OCR, igual se puede cargar a mano
+                traceback.print_exc()
                 st.warning(f"No se pudo leer la foto automáticamente ({e}). Completá los datos a mano.")
                 ext = {k: None for k in comparar.CAMPOS}
                 ext["saldo_anterior"] = None
@@ -144,7 +146,7 @@ def pagina_cargar():
 
     col1, col2 = st.columns(2)
     nro = col1.text_input("Número de comprobante", value=ext.get("nro_comprobante") or "", key=f"nro_{k}").strip()
-    fecha = col2.date_input("Fecha", value=comparar.a_fecha(ext.get("fecha_emision")) or date.today(),
+    fecha = col2.date_input("Fecha", value=comparar.a_fecha(ext.get("fecha_emision")),
                             format="DD/MM/YYYY", key=f"fecha_{k}")
     kilos = col1.number_input("Kilos (si figuran)", min_value=0.0, step=0.1, format="%.2f",
                               value=comparar.a_numero(ext.get("total_kg")), key=f"kg_{k}")
@@ -157,7 +159,7 @@ def pagina_cargar():
 
     if prov and nro and db.existe_comprobante(con, prov, nro):
         st.error(f"Ya hay un comprobante Nº {nro} de {prov} cargado. Fijate que no sea repetido.")
-    if fecha > date.today():
+    if fecha and fecha > date.today():
         st.warning("La fecha es posterior a hoy.")
 
     # Importe: el impreso, o cantidad por precio de cada producto
@@ -170,7 +172,7 @@ def pagina_cargar():
             importe = st.number_input("Importe total", min_value=0.0, step=100.0, format="%.2f", value=None,
                                       key=f"imp_mano_{k}")
         else:
-            importe, items, precios_a_guardar = tabla_productos(prov, fecha, kilos, k)
+            importe, items, precios_a_guardar = tabla_productos(prov, fecha or date.today(), kilos, k)
 
     if importe:
         st.subheader(f"Importe {pesos(importe)}")
@@ -180,7 +182,7 @@ def pagina_cargar():
             st.info(f"Control: la boleta dice saldo anterior {pesos(saldo_ant)} y en el sistema la deuda "
                     f"con {prov} es {pesos(deuda)}. Puede ser por boletas o pagos que todavía no se cargaron.")
 
-    faltan = [n for n, v in (("proveedor", prov), ("importe", importe)) if not v]
+    faltan = [n for n, v in (("proveedor", prov), ("fecha", fecha), ("importe", importe)) if not v]
     if st.button("Guardar boleta", type="primary", disabled=bool(faltan)):
         confirmado = {"proveedor": prov, "nro_comprobante": nro or None, "fecha_emision": fecha.isoformat(),
                       "total_pesos": impreso or None, "total_kg": kilos or None}
@@ -202,7 +204,7 @@ def pagina_cargar():
         st.session_state.mensaje = f"Boleta de {prov} por {pesos(importe)} guardada."
         st.rerun()
     if faltan:
-        st.caption("Falta completar " + " y ".join(faltan) + ".")
+        st.caption("Falta completar " + ", ".join(faltan) + ".")
 
 
 def tabla_productos(prov, fecha, kilos, k):

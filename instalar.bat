@@ -7,7 +7,7 @@ if not exist .venv (
 )
 call .venv\Scripts\activate.bat
 python -m pip install --upgrade pip
-python -m pip install paddlepaddle -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+python -m pip install paddlepaddle==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
 python -m pip install -r requirements.txt
 if not exist config\proveedores.json copy config\proveedores.ejemplo.json config\proveedores.json
 if not exist config\ajustes.json copy config\ajustes.ejemplo.json config\ajustes.json
