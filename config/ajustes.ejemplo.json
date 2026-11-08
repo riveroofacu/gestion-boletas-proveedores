@@ -4,6 +4,7 @@
   "telegram_token": "",
   "telegram_chat_id": "",
   "dias_aviso": 7,
+  "hora_aviso": 8,
   "lado_max": 2000,
   "orientacion_renglones": true,
   "_comentario_ocr": "lado_max y orientacion_renglones cambian la velocidad de lectura. Ver probar_velocidad.bat"

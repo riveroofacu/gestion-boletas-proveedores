@@ -5,13 +5,16 @@ Uso
   python alertas.py            manda el aviso del día (una sola vez por día)
   python alertas.py --forzar   lo manda aunque ya se haya mandado hoy
   python alertas.py --chat-id  muestra el chat_id de quien le escribió al bot (para configurarlo)
+  python alertas.py --esperar  queda abierto y manda el aviso todos los días a la hora_aviso
+                               de config/ajustes.json (8 por defecto); lo usa iniciar.bat
 
 El token del bot y el chat_id van en config/ajustes.json (no se sube al repositorio).
 """
 import json
 import os
 import sys
-from datetime import date
+import time
+from datetime import date, datetime
 
 import requests
 
@@ -82,7 +85,20 @@ def mostrar_chat_id(token):
         print(f"chat_id {cid}  ({nombre})")
 
 
-def main():
+def esperar():
+    """Revisa cada 10 minutos y manda el aviso una vez por día, desde la hora_aviso."""
+    print("Avisos de Telegram activos. Se mandan una vez por día.")
+    while True:
+        hora = int(cargar_ajustes().get("hora_aviso", 8))
+        if datetime.now().hour >= hora:
+            try:
+                main(silencioso=True)
+            except Exception as e:   # un error (sin internet, etc.) no corta la espera
+                print(datetime.now().strftime("%d/%m %H:%M"), "No se pudo mandar el aviso:", e)
+        time.sleep(600)
+
+
+def main(silencioso=False):
     aj = cargar_ajustes()
     token, chat_id = aj.get("telegram_token"), aj.get("telegram_chat_id")
     if not token:
@@ -98,7 +114,8 @@ def main():
     if "--forzar" not in sys.argv and os.path.exists(RUTA_ULTIMO):
         with open(RUTA_ULTIMO) as f:
             if f.read().strip() == hoy:
-                print("El aviso de hoy ya se mandó.")
+                if not silencioso:
+                    print("El aviso de hoy ya se mandó.")
                 return
     os.makedirs(os.path.dirname(RUTA_DB), exist_ok=True)
     con = db.conectar(RUTA_DB)
@@ -109,8 +126,11 @@ def main():
         return
     with open(RUTA_ULTIMO, "w") as f:
         f.write(hoy)
-    print("Aviso enviado.")
+    print(datetime.now().strftime("%d/%m %H:%M"), "Aviso enviado.")
 
 
 if __name__ == "__main__":
-    main()
+    if "--esperar" in sys.argv:
+        esperar()
+    else:
+        main()
