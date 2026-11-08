@@ -14,6 +14,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
@@ -34,6 +35,12 @@ OTRO_PROVEEDOR = "Otro (no está en la lista)"
 NUEVO_PRODUCTO = "Otro producto"
 
 st.set_page_config(page_title="Boletas - Cabaña Santa Lucía", page_icon="🧾", layout="centered")
+# Streamlit marca la página como inglés y Chrome la "traduce" al castellano, cambiando textos
+# ("Media res" -> "Res. media"). Se marca como castellano y sin traducción.
+components.html("""<script>
+const d = window.parent.document.documentElement; d.lang = "es"; d.setAttribute("translate", "no");
+d.classList.add("notranslate");
+</script>""", height=0)
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +232,11 @@ def tabla_productos(prov, fecha, kilos, k):
     """Un casillero por producto del proveedor: se pone la cantidad que trae la boleta y el importe
     se calcula con el precio vigente a la fecha de la boleta. Devuelve (importe, items, precios_a_guardar)."""
     vigentes = db.precios_vigentes(con, prov, fecha)
-    frecuente = db.producto_frecuente(con, prov) or (vigentes[0]["producto"] if len(vigentes) == 1 else None)
+    # Producto que se completa solo con los kilos leídos: el que más se repite en las boletas de ese
+    # proveedor; si todavía no hay boletas, el habitual de config/proveedores.json (si tiene uno).
+    habitual = next((p.get("producto_habitual") for p in proveedores_config() if p["nombre"] == prov), None)
+    frecuente = (db.producto_frecuente(con, prov) or habitual
+                 or (vigentes[0]["producto"] if len(vigentes) == 1 else None))
     st.markdown("**Productos de la boleta**")
     st.caption("Poné la cantidad de cada producto que vino y dejá vacío el resto.")
     cantidades = {}

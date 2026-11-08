@@ -2,7 +2,7 @@
   "_comentario": "Copiá este archivo como config/proveedores.json y completalo con los proveedores reales. Ese archivo no se sube al repositorio. El orden importa: se revisan de arriba hacia abajo.",
   "_formatos_disponibles": ["remito_carnico", "remito_carnico_generico", "remito_con_saldo", "presupuesto", "planilla_kilos", "nota_manuscrita", "remito_generico"],
   "proveedores": [
-    {"nombre": "Proveedor fijo 1", "formato": "remito_carnico",  "palabras_clave": ["nombreimpreso1"]},
+    {"nombre": "Proveedor fijo 1", "formato": "remito_carnico",  "palabras_clave": ["nombreimpreso1"], "producto_habitual": "Media res"},
     {"nombre": "Proveedor fijo 2", "formato": "remito_con_saldo", "palabras_clave": ["nombreimpreso2"], "parecidas": ["nombreimpreso2"]},
     {"nombre": "Proveedor fijo 3", "formato": "planilla_kilos",  "palabras_clave": ["nombreimpreso3"], "parecidas": ["nombreimpreso3"]},
     {"nombre": "Proveedor fijo 4", "formato": "nota_manuscrita", "palabras_clave": ["encabezado"], "pares": [["notade", "pedido"]], "parecidas": ["encabezado"]},
