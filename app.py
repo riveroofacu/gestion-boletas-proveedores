@@ -264,13 +264,14 @@ def tabla_productos(prov, fecha, kilos, k, ocr=None):
     else:
         st.caption("Poné la cantidad de cada producto que vino y dejá vacío el resto.")
     cantidades = {}
+    cols = st.columns(2)
     for i, v in enumerate(vigentes):
         precio_txt = f"{pesos(v['precio'])} por {v['unidad']}" if v["precio"] else "sin precio"
         if leidos:
             previo = leidos.get(v["producto"])
         else:
             previo = kilos if (kilos and v["producto"] == frecuente and v["unidad"] == "kg") else None
-        cantidades[v["producto"]] = st.number_input(
+        cantidades[v["producto"]] = cols[i % 2].number_input(
             f"{v['producto']} · {precio_txt}", min_value=0.0, format="%.2f", value=previo,
             step=0.1 if v["unidad"] == "kg" else 1.0, key=f"cant_{k}_{prov}_{i}")
 
@@ -412,16 +413,29 @@ def pagina_panel():
     else:
         estilos.vacio("No hay deuda con ningún proveedor.")
 
-    estilos.subtitulo("Cheques a cobrar")
-    ch = db.cheques(con, desde=date.today())
-    if ch:
-        limite = (date.today() + timedelta(days=dias)).isoformat()
-        for c in ch:
-            det = f"Cheque Nº {c['nro_cheque']}" if c["nro_cheque"] else "Cheque"
-            estilos.cheque(c["fecha_cobro"], c["proveedor"], f"{det} · cobro {dmy(c['fecha_cobro'])}",
-                           pesos(c["monto"]), pronto=c["fecha_cobro"] <= limite)
-    else:
-        estilos.vacio("No hay cheques pendientes de cobro.")
+    izq, der = st.columns(2, gap="large")
+    with izq:
+        estilos.subtitulo("Cheques a cobrar")
+        ch = db.cheques(con, desde=date.today())
+        if ch:
+            limite = (date.today() + timedelta(days=dias)).isoformat()
+            for c in ch:
+                det = f"Cheque Nº {c['nro_cheque']}" if c["nro_cheque"] else "Cheque"
+                estilos.cheque(c["fecha_cobro"], c["proveedor"], f"{det} · cobro {dmy(c['fecha_cobro'])}",
+                               pesos(c["monto"]), pronto=c["fecha_cobro"] <= limite)
+        else:
+            estilos.vacio("No hay cheques pendientes de cobro.")
+
+    with der:
+        comps_ = db.comprobantes(con)
+        if comps_:
+            estilos.subtitulo("Compras por mes")
+            gm = db.gastos_por_mes(con)
+            meses = sorted({g["mes"] for g in gm}, reverse=True)
+            mes = st.selectbox("Mes", meses, format_func=estilos.nombre_mes, key="mes_compras")
+            del_mes = sorted((g for g in gm if g["mes"] == mes), key=lambda g: -g["total"])
+            estilos.barras([(g["proveedor"], g["total"], pesos(g["total"])) for g in del_mes],
+                           pesos(sum(g["total"] for g in del_mes)))
 
     estilos.subtitulo("Boletas")
     comps = db.comprobantes(con)
@@ -457,14 +471,6 @@ def pagina_panel():
                     st.rerun()
                 else:
                     st.error("No se puede borrar porque tiene pagos asignados.")
-
-        estilos.subtitulo("Compras por mes")
-        gm = db.gastos_por_mes(con)
-        meses = sorted({g["mes"] for g in gm}, reverse=True)
-        mes = st.selectbox("Mes", meses, format_func=estilos.nombre_mes, key="mes_compras")
-        del_mes = sorted((g for g in gm if g["mes"] == mes), key=lambda g: -g["total"])
-        estilos.barras([(g["proveedor"], g["total"], pesos(g["total"])) for g in del_mes],
-                       pesos(sum(g["total"] for g in del_mes)))
 
     if ajustes.get("telegram_token") and ajustes.get("telegram_chat_id"):
         if st.button("Mandar aviso por Telegram ahora"):

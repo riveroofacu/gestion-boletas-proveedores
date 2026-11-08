@@ -16,7 +16,7 @@ PALETA_GRAFICOS = [ROJO, NEGRO, MADERA, "#D9867E", "#6B6560", "#C49A6C", "#7A1F1
 CSS = """
 <style>
 __FUENTES__
-:root { --rojo:#AF342C; --rojo-osc:#8E2922; --negro:#121212; --crema:#F5F1EA; --madera:#8A5A33;
+:root { --rojo:#AF342C; --rojo-osc:#8E2922; --negro:#121212; --crema:#EBE3D6; --madera:#8A5A33;
         --madera-cl:#B07A4A; --borde:#E2DACD; --gris:#6B6560; --verde:#2F6B3A; --ambar:#B7791F; }
 .stApp { background: var(--crema); }
 header[data-testid="stHeader"] { background: transparent; height: 0; }
@@ -144,6 +144,7 @@ header[data-testid="stHeader"] { background: transparent; height: 0; }
                    padding: 10px 0 6px; font-family: 'Roboto Slab', Rockwell, Georgia, serif; font-weight: 700; }
 .csl-vacio { background: #fff; border: 1px dashed var(--borde); border-radius: 6px; padding: 14px; color: var(--gris);
              text-align: center; font-size: 14px; }
+@media (min-width: 820px) { .block-container { max-width: 1180px !important; padding-left: 40px !important; padding-right: 40px !important; } }
 </style>
 """
 
