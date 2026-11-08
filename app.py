@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(BASE, "src"))
 import comparar  # noqa: E402
 import db  # noqa: E402
 import detalle  # noqa: E402
+import estilos  # noqa: E402
 import extraccion  # noqa: E402
 import alertas  # noqa: E402
 
@@ -35,7 +36,9 @@ for c in (CARPETA_FOTOS, CARPETA_TMP):
 OTRO_PROVEEDOR = "Otro (no está en la lista)"
 NUEVO_PRODUCTO = "Otro producto"
 
-st.set_page_config(page_title="Boletas - Cabaña Santa Lucía", page_icon="🧾", layout="centered")
+st.set_page_config(page_title="Boletas - Cabaña Santa Lucía", page_icon=os.path.join(BASE, "assets", "logo.png"),
+                   layout="centered")
+estilos.aplicar()
 # Streamlit marca la página como inglés y Chrome la "traduce" al castellano, cambiando textos
 # ("Media res" -> "Res. media"). Se marca como castellano y sin traducción.
 components.html("""<script>
@@ -88,7 +91,7 @@ def nombres_proveedores(con):
 # ---------------------------------------------------------------------------
 ajustes = alertas.cargar_ajustes()
 if ajustes.get("clave") and not st.session_state.get("adentro"):
-    st.title("Boletas de proveedores")
+    estilos.portada()
     clave = st.text_input("Clave", type="password")
     if st.button("Entrar", type="primary"):
         if clave == ajustes["clave"]:
@@ -113,9 +116,13 @@ def lector_listo():
 
 
 lector_listo()
-pagina = st.segmented_control("Sección", ["Cargar boleta", "Pagos", "Panel", "Precios"],
-                              default="Cargar boleta", label_visibility="collapsed", key="pagina")
-pagina = pagina or "Cargar boleta"
+estilos.encabezado()
+_nav = dict(default="Cargar", label_visibility="collapsed", key="pagina")
+try:
+    pagina = st.segmented_control("Sección", ["Cargar", "Pagos", "Panel", "Precios"], width="stretch", **_nav)
+except TypeError:   # versiones de Streamlit sin el parámetro width
+    pagina = st.segmented_control("Sección", ["Cargar", "Pagos", "Panel", "Precios"], **_nav)
+pagina = pagina or "Cargar"
 
 if st.session_state.get("mensaje"):
     st.success(st.session_state.pop("mensaje"))
@@ -125,7 +132,7 @@ if st.session_state.get("mensaje"):
 # Cargar boleta
 # ---------------------------------------------------------------------------
 def pagina_cargar():
-    st.header("Cargar boleta")
+    estilos.titulo("Cargar boleta")
     n = st.session_state.get("n_subida", 0)
     foto = st.file_uploader("Sacale una foto a la boleta o elegila de la galería",
                             type=["jpg", "jpeg", "png"], key=f"foto_{n}")
@@ -205,7 +212,9 @@ def pagina_cargar():
                 prov, fecha or date.today(), kilos, k, lec.get("ocr"))
 
     if importe:
-        st.subheader(f"Importe {pesos(importe)}")
+        estilos.total("Importe", pesos(importe),
+                      [(f"{i['producto']} · {num(i['cantidad'])} {i['unidad']} × {pesos(i['precio'])}",
+                        pesos(i["cantidad"] * i["precio"])) for i in items] if len(items) > 0 else ())
     if saldo_ant is not None and prov:
         deuda = next((d["deuda"] for d in db.deuda_por_proveedor(con) if d["proveedor"] == prov), 0.0)
         if abs(deuda - saldo_ant) > 1:
@@ -249,7 +258,7 @@ def tabla_productos(prov, fecha, kilos, k, ocr=None):
     habitual = next((p.get("producto_habitual") for p in proveedores_config() if p["nombre"] == prov), None)
     frecuente = (db.producto_frecuente(con, prov) or habitual
                  or (vigentes[0]["producto"] if len(vigentes) == 1 else None))
-    st.markdown("**Productos de la boleta**")
+    estilos.subtitulo("Productos de la boleta")
     if leidos:
         st.caption("Las cantidades se leyeron de la boleta. Revisalas y corregí lo que haga falta.")
     else:
@@ -299,8 +308,6 @@ def tabla_productos(prov, fecha, kilos, k, ocr=None):
         st.warning(f"Los kilos de los productos suman {num(kg_items)} y la boleta dice {num(kilos)} en total. Revisalo.")
     if not items or sin_precio:
         return None, items, guardar, detalle_leido
-    for i in items:
-        st.caption(f"{i['producto']} {num(i['cantidad'])} {i['unidad']} × {pesos(i['precio'])} = {pesos(i['cantidad'] * i['precio'])}")
     return round(sum(i["cantidad"] * i["precio"] for i in items), 2), items, guardar, detalle_leido
 
 
@@ -308,7 +315,7 @@ def tabla_productos(prov, fecha, kilos, k, ocr=None):
 # Pagos
 # ---------------------------------------------------------------------------
 def pagina_pagos():
-    st.header("Registrar pago")
+    estilos.titulo("Registrar pago")
     con_deuda = [d["proveedor"] for d in db.deuda_por_proveedor(con) if d["deuda"] > db.TOL]
     if not con_deuda:
         st.info("No hay boletas pendientes de pago.")
@@ -340,17 +347,20 @@ def pagina_pagos():
 
         # Vista previa de cómo queda
         disponible = monto + favor
+        if elegidos:
+            estilos.subtitulo("Cómo quedan")
         for cid in elegidos:
             s = por_id[cid]["saldo"]
+            txt = f"{dmy(por_id[cid]['fecha'])} · Nº {por_id[cid]['nro'] or 's/n'}"
             if disponible >= s - db.TOL:
-                st.write(f"✔ Nº {por_id[cid]['nro'] or 's/n'} queda pagada")
+                estilos.fila(txt, "Pagado", "Queda pagada")
             elif disponible > db.TOL:
-                st.write(f"◐ Nº {por_id[cid]['nro'] or 's/n'} queda debiendo {pesos(s - disponible)}")
+                estilos.fila(f"{txt} · sigue debiendo {pesos(s - disponible)}", "Parcial")
             else:
-                st.write(f"✘ Nº {por_id[cid]['nro'] or 's/n'} no alcanza a cubrirse")
+                estilos.fila(f"{txt} · no alcanza", "Pendiente")
             disponible = max(disponible - s, 0)
         if disponible > db.TOL:
-            st.write(f"Quedan {pesos(disponible)} a favor para próximas boletas")
+            estilos.fila(f"Quedan {pesos(disponible)} para próximas boletas", "Favor", "A favor")
 
         if st.button("Registrar pago", type="primary", disabled=monto <= 0 and (not elegidos or favor <= db.TOL)):
             if monto > 0:
@@ -362,7 +372,7 @@ def pagina_pagos():
             st.session_state.n_pago = np_ + 1
             st.rerun()
 
-    st.subheader("Últimos pagos")
+    estilos.subtitulo("Últimos pagos")
     pg = db.pagos(con)
     if pg:
         df = pd.DataFrame(pg)
@@ -379,38 +389,41 @@ def pagina_pagos():
 # Panel
 # ---------------------------------------------------------------------------
 def pagina_panel():
-    st.header("Panel")
+    estilos.titulo("Panel")
     deuda = db.deuda_por_proveedor(con)
     total = sum(d["deuda"] for d in deuda)
     dias = int(ajustes.get("dias_aviso", 7))
     prox = db.cheques_proximos(con, dias)
-    c1, c2 = st.columns(2)
-    c1.metric("Deuda total", pesos(total))
-    c2.metric(f"Cheques próximos {dias} días", pesos(sum(c["monto"] for c in prox)))
+    estilos.kpis([("Deuda total", pesos(total), False),
+                  (f"Cheques próximos {dias} días", pesos(sum(c["monto"] for c in prox)), True)])
 
-    st.subheader("Deuda por proveedor")
+    estilos.subtitulo("Deuda por proveedor")
     if deuda:
-        df = pd.DataFrame(deuda)
-        df["Deuda"] = df["deuda"].map(pesos)
-        df["A favor"] = df["a_favor"].map(lambda x: pesos(x) if x > db.TOL else "")
-        st.dataframe(df[["proveedor", "comprobantes", "A favor", "Deuda"]]
-                     .rename(columns={"proveedor": "Proveedor", "comprobantes": "Boletas impagas"}),
-                     hide_index=True)
+        tarjetas = []
+        for d in deuda:
+            partes = []
+            if d["comprobantes"]:
+                partes.append(f"{d['comprobantes']} boleta{'s' if d['comprobantes'] != 1 else ''} "
+                              f"impaga{'s' if d['comprobantes'] != 1 else ''}")
+            if d["a_favor"] > db.TOL:
+                partes.append(f"{pesos(d['a_favor'])} a favor")
+            tarjetas.append((d["proveedor"], pesos(d["deuda"]), " · ".join(partes), d["deuda"] <= db.TOL))
+        estilos.proveedores(tarjetas)
     else:
-        st.write("Sin deuda.")
+        estilos.vacio("No hay deuda con ningún proveedor.")
 
-    st.subheader("Cheques a cobrar")
+    estilos.subtitulo("Cheques a cobrar")
     ch = db.cheques(con, desde=date.today())
     if ch:
-        df = pd.DataFrame(ch)
-        df["Cobro"] = df["fecha_cobro"].map(dmy)
-        df["Monto"] = df["monto"].map(pesos)
-        st.dataframe(df[["Cobro", "proveedor", "Monto", "nro_cheque"]]
-                     .rename(columns={"proveedor": "Proveedor", "nro_cheque": "Cheque Nº"}), hide_index=True)
+        limite = (date.today() + timedelta(days=dias)).isoformat()
+        for c in ch:
+            det = f"Cheque Nº {c['nro_cheque']}" if c["nro_cheque"] else "Cheque"
+            estilos.cheque(c["fecha_cobro"], c["proveedor"], f"{det} · cobro {dmy(c['fecha_cobro'])}",
+                           pesos(c["monto"]), pronto=c["fecha_cobro"] <= limite)
     else:
-        st.write("No hay cheques pendientes de cobro.")
+        estilos.vacio("No hay cheques pendientes de cobro.")
 
-    st.subheader("Boletas")
+    estilos.subtitulo("Boletas")
     comps = db.comprobantes(con)
     if comps:
         df = pd.DataFrame(comps)
@@ -425,7 +438,7 @@ def pagina_panel():
         vista = pd.DataFrame({"Id": df["id"], "Fecha": df["fecha"].map(dmy), "Proveedor": df["proveedor"],
                               "Nº": df["nro"].fillna(""), "Kilos": df["total_kg"].map(lambda x: "" if pd.isna(x) else f"{x:g}"), "Importe": df["importe"].map(pesos),
                               "Debe": df["saldo"].map(pesos), "Estado": df["estado"]})
-        st.dataframe(vista, hide_index=True)
+        st.dataframe(vista.style.map(estilos.color_estado, subset=["Estado"]), hide_index=True)
         with st.expander("Ver foto o borrar una boleta cargada por error"):
             cid = st.selectbox("Boleta", list(df["id"]),
                                format_func=lambda i: vista.set_index("Id").loc[i, ["Fecha", "Proveedor", "Nº"]]
@@ -445,9 +458,10 @@ def pagina_panel():
                 else:
                     st.error("No se puede borrar porque tiene pagos asignados.")
 
-        st.subheader("Compras por mes")
-        gm = pd.DataFrame(db.gastos_por_mes(con))
-        st.bar_chart(gm.pivot(index="mes", columns="proveedor", values="total").fillna(0))
+        estilos.subtitulo("Compras por mes")
+        gm = pd.DataFrame(db.gastos_por_mes(con)).pivot(index="mes", columns="proveedor", values="total").fillna(0)
+        colores = [estilos.PALETA_GRAFICOS[i % len(estilos.PALETA_GRAFICOS)] for i in range(len(gm.columns))]
+        st.bar_chart(gm, color=colores)
 
     if ajustes.get("telegram_token") and ajustes.get("telegram_chat_id"):
         if st.button("Mandar aviso por Telegram ahora"):
@@ -462,7 +476,7 @@ def pagina_panel():
 # Precios
 # ---------------------------------------------------------------------------
 def pagina_precios():
-    st.header("Precios")
+    estilos.titulo("Precios")
     st.caption("Se usan para calcular el importe de las boletas que solo traen kilos o cajones. "
                "Cuando cambia un precio se carga uno nuevo con la fecha desde la que vale; el anterior queda "
                "para las boletas viejas.")
@@ -475,7 +489,7 @@ def pagina_precios():
         st.dataframe(vigentes[["proveedor", "producto", "Precio", "Desde"]]
                      .rename(columns={"proveedor": "Proveedor", "producto": "Producto"}), hide_index=True)
 
-    st.subheader("Cargar o actualizar un precio")
+    estilos.subtitulo("Cargar o actualizar un precio")
     prov = st.selectbox("Proveedor", nombres_proveedores(con), key="precio_prov")
     prods = db.productos(con, prov) if prov else []
     prod = st.selectbox("Producto", prods + [NUEVO_PRODUCTO], key="precio_prod")
@@ -493,5 +507,5 @@ def pagina_precios():
         st.rerun()
 
 
-{"Cargar boleta": pagina_cargar, "Pagos": pagina_pagos,
+{"Cargar": pagina_cargar, "Pagos": pagina_pagos,
  "Panel": pagina_panel, "Precios": pagina_precios}[pagina]()
