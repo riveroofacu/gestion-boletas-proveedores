@@ -61,6 +61,7 @@ def main():
     imp = {"ok": 0, "n": 0}
     man = {"ok": 0, "n": 0}
     completos, correcciones, seg_ocr, seg_carga = 0, [], [], []
+    det = {"ok": 0, "vacio": 0, "incorrecto": 0, "boletas": 0, "boletas_ok": 0}
     for f in filas:
         ext, conf = json.loads(f["extraido"]), json.loads(f["confirmado"])
         res = {k: comparar.resultado(k, ext.get(k), conf.get(k)) for k in comparar.CAMPOS}
@@ -75,6 +76,17 @@ def main():
         if all(r in (None, "ok") for r in res.values()):
             completos += 1
         correcciones.append(comparar.correcciones(ext, conf))
+        # Detalle por producto (boletas cuyo importe salió de cantidad por precio)
+        confirmados = {i["producto"]: i["cantidad"] for i in db.items_de(con, f["id"])}
+        if confirmados:
+            leidos = {d["producto"]: d["cantidad"] for d in ext.get("detalle") or []}
+            r_det = {p: ("ok" if p in leidos and abs(leidos[p] - c) < 0.05 else
+                         "vacio" if p not in leidos else "incorrecto") for p, c in confirmados.items()}
+            r_det.update({p: "incorrecto" for p in leidos if p not in confirmados})
+            for r in r_det.values():
+                det[r] += 1
+            det["boletas"] += 1
+            det["boletas_ok"] += all(r == "ok" for r in r_det.values())
         if f["segundos_ocr"] is not None:
             seg_ocr.append(f["segundos_ocr"])
         if f["segundos_carga"] is not None:
@@ -104,6 +116,12 @@ def main():
     if seg_carga:
         menos_min = sum(s < 60 for s in seg_carga)
         print(f"  Tiempo de carga (prom.)    {mean(seg_carga):.0f} s, {pct(menos_min, len(seg_carga))} en menos de 1 minuto")
+
+    if det["boletas"]:
+        tot = det["ok"] + det["vacio"] + det["incorrecto"]
+        print("\nDetalle por producto (agregado de la segunda iteración, sin umbral previo)")
+        print(f"  Renglones bien leídos       {pct(det['ok'], tot)}  (vacíos {det['vacio']}, incorrectos {det['incorrecto']})")
+        print(f"  Boletas con todo el detalle bien  {pct(det['boletas_ok'], det['boletas'])}")
 
     salida = os.path.join(BASE, "datos", "resultados_campo.csv")
     with open(salida, "w", newline="", encoding="utf-8") as fh:

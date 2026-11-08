@@ -21,6 +21,7 @@ sys.path.insert(0, BASE)
 sys.path.insert(0, os.path.join(BASE, "src"))
 import comparar  # noqa: E402
 import db  # noqa: E402
+import detalle  # noqa: E402
 import extraccion  # noqa: E402
 import alertas  # noqa: E402
 
@@ -50,6 +51,10 @@ def pesos(x):
     if x is None:
         return "-"
     return "$ " + f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def num(x):
+    return f"{x:g}".replace(".", ",")
 
 
 def dmy(iso):
@@ -140,13 +145,16 @@ def pagina_cargar():
                 lectura = extraccion.leer_foto(ruta, CARPETA_TMP)
                 ext = extraccion.extraer(lectura, proveedores_config())
                 seg = lectura["segundos"]
+                ocr = {"textos": lectura["textos"], "cajas": lectura["cajas"]}
             except Exception as e:   # si falla el OCR, igual se puede cargar a mano
                 traceback.print_exc()
                 st.warning(f"No se pudo leer la foto automáticamente ({e}). Completá los datos a mano.")
                 ext = {k: None for k in comparar.CAMPOS}
                 ext["saldo_anterior"] = None
                 seg = None
-        st.session_state.lectura = {"clave": clave, "ruta": ruta, "ext": ext, "seg_ocr": seg, "t0": t0}
+                ocr = None
+        st.session_state.lectura = {"clave": clave, "ruta": ruta, "ext": ext, "seg_ocr": seg, "t0": t0,
+                                    "ocr": ocr}
 
     lec = st.session_state.lectura
     ext = lec["ext"]
@@ -184,7 +192,7 @@ def pagina_cargar():
         st.warning("La fecha es posterior a hoy.")
 
     # Importe: el impreso, o cantidad por precio de cada producto
-    importe, items, precios_a_guardar = None, [], []
+    importe, items, precios_a_guardar, detalle_leido = None, [], [], []
     if impreso:
         importe = impreso
     elif prov:
@@ -193,7 +201,8 @@ def pagina_cargar():
             importe = st.number_input("Importe total", min_value=0.0, step=100.0, format="%.2f", value=None,
                                       key=f"imp_mano_{k}")
         else:
-            importe, items, precios_a_guardar = tabla_productos(prov, fecha or date.today(), kilos, k)
+            importe, items, precios_a_guardar, detalle_leido = tabla_productos(
+                prov, fecha or date.today(), kilos, k, lec.get("ocr"))
 
     if importe:
         st.subheader(f"Importe {pesos(importe)}")
@@ -214,7 +223,7 @@ def pagina_cargar():
             con, prov, nro, fecha, importe, total_kg=kilos or None,
             producto=unico["producto"] if unico else ("Varios" if items else None),
             precio_kg=unico["precio"] if unico else None, saldo_anterior=saldo_ant, items=items,
-            extraido=ext, confirmado=confirmado, campos_corregidos=comparar.correcciones(ext, confirmado),
+            extraido={**ext, "detalle": detalle_leido}, confirmado=confirmado, campos_corregidos=comparar.correcciones(ext, confirmado),
             segundos_ocr=lec["seg_ocr"], segundos_carga=round(time.time() - lec["t0"], 1))
         destino = os.path.join(CARPETA_FOTOS, f"{cid}.jpg")
         shutil.move(lec["ruta"], destino)
@@ -228,21 +237,30 @@ def pagina_cargar():
         st.caption("Falta completar " + ", ".join(faltan) + ".")
 
 
-def tabla_productos(prov, fecha, kilos, k):
-    """Un casillero por producto del proveedor: se pone la cantidad que trae la boleta y el importe
-    se calcula con el precio vigente a la fecha de la boleta. Devuelve (importe, items, precios_a_guardar)."""
+def tabla_productos(prov, fecha, kilos, k, ocr=None):
+    """Un casillero por producto del proveedor con la cantidad que trae la boleta; el importe se calcula
+    con el precio vigente a la fecha de la boleta. Las cantidades se leen de la tabla de la boleta
+    cuando se puede (detalle.py). Devuelve (importe, items, precios_a_guardar, detalle_leido)."""
     vigentes = db.precios_vigentes(con, prov, fecha)
+    detalle_leido = detalle.detalle_por_producto(ocr, vigentes) if ocr else []
+    leidos = {d["producto"]: d["cantidad"] for d in detalle_leido}
     # Producto que se completa solo con los kilos leídos: el que más se repite en las boletas de ese
     # proveedor; si todavía no hay boletas, el habitual de config/proveedores.json (si tiene uno).
     habitual = next((p.get("producto_habitual") for p in proveedores_config() if p["nombre"] == prov), None)
     frecuente = (db.producto_frecuente(con, prov) or habitual
                  or (vigentes[0]["producto"] if len(vigentes) == 1 else None))
     st.markdown("**Productos de la boleta**")
-    st.caption("Poné la cantidad de cada producto que vino y dejá vacío el resto.")
+    if leidos:
+        st.caption("Las cantidades se leyeron de la boleta. Revisalas y corregí lo que haga falta.")
+    else:
+        st.caption("Poné la cantidad de cada producto que vino y dejá vacío el resto.")
     cantidades = {}
     for i, v in enumerate(vigentes):
         precio_txt = f"{pesos(v['precio'])} por {v['unidad']}" if v["precio"] else "sin precio"
-        previo = kilos if (kilos and v["producto"] == frecuente and v["unidad"] == "kg") else None
+        if leidos:
+            previo = leidos.get(v["producto"])
+        else:
+            previo = kilos if (kilos and v["producto"] == frecuente and v["unidad"] == "kg") else None
         cantidades[v["producto"]] = st.number_input(
             f"{v['producto']} · {precio_txt}", min_value=0.0, format="%.2f", value=previo,
             step=0.1 if v["unidad"] == "kg" else 1.0, key=f"cant_{k}_{prov}_{i}")
@@ -278,12 +296,12 @@ def tabla_productos(prov, fecha, kilos, k):
     kg_items = sum(i["cantidad"] for i in items if i["unidad"] == "kg")
     todo = sum(i["cantidad"] for i in items)
     if kilos and items and abs(kg_items - kilos) > 0.05 and abs(todo - kilos) > 0.05:
-        st.warning(f"Los kilos de los productos suman {kg_items:g} y la boleta dice {kilos:g} en total. Revisalo.")
+        st.warning(f"Los kilos de los productos suman {num(kg_items)} y la boleta dice {num(kilos)} en total. Revisalo.")
     if not items or sin_precio:
-        return None, items, guardar
+        return None, items, guardar, detalle_leido
     for i in items:
-        st.caption(f"{i['producto']} {i['cantidad']:g} {i['unidad']} × {pesos(i['precio'])} = {pesos(i['cantidad'] * i['precio'])}")
-    return round(sum(i["cantidad"] * i["precio"] for i in items), 2), items, guardar
+        st.caption(f"{i['producto']} {num(i['cantidad'])} {i['unidad']} × {pesos(i['precio'])} = {pesos(i['cantidad'] * i['precio'])}")
+    return round(sum(i["cantidad"] * i["precio"] for i in items), 2), items, guardar, detalle_leido
 
 
 # ---------------------------------------------------------------------------
