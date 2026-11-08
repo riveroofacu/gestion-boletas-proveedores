@@ -459,9 +459,12 @@ def pagina_panel():
                     st.error("No se puede borrar porque tiene pagos asignados.")
 
         estilos.subtitulo("Compras por mes")
-        gm = pd.DataFrame(db.gastos_por_mes(con)).pivot(index="mes", columns="proveedor", values="total").fillna(0)
-        colores = [estilos.PALETA_GRAFICOS[i % len(estilos.PALETA_GRAFICOS)] for i in range(len(gm.columns))]
-        st.bar_chart(gm, color=colores)
+        gm = db.gastos_por_mes(con)
+        meses = sorted({g["mes"] for g in gm}, reverse=True)
+        mes = st.selectbox("Mes", meses, format_func=estilos.nombre_mes, key="mes_compras")
+        del_mes = sorted((g for g in gm if g["mes"] == mes), key=lambda g: -g["total"])
+        estilos.barras([(g["proveedor"], g["total"], pesos(g["total"])) for g in del_mes],
+                       pesos(sum(g["total"] for g in del_mes)))
 
     if ajustes.get("telegram_token") and ajustes.get("telegram_chat_id"):
         if st.button("Mandar aviso por Telegram ahora"):

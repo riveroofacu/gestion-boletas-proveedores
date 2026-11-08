@@ -130,6 +130,18 @@ header[data-testid="stHeader"] { background: transparent; height: 0; }
             text-transform: uppercase; padding: 3px 8px; border-radius: 3px; color: #fff; white-space: nowrap; }
 .csl-chip.Pagado { background: var(--verde); } .csl-chip.Parcial { background: var(--ambar); }
 .csl-chip.Pendiente { background: var(--rojo); } .csl-chip.Favor { background: var(--madera); }
+/* Compras por proveedor (barras) */
+.csl-barras { background: #fff; border: 1px solid var(--borde); border-radius: 6px; padding: 14px 16px 8px; }
+.csl-barra { margin-bottom: 12px; }
+.csl-barra .top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.csl-barra .n { font-family: 'Roboto Slab', Rockwell, Georgia, serif; font-weight: 600; font-size: 14px; }
+.csl-barra .v { font-family: 'Alfa Slab One', Rockwell, Georgia, serif; font-size: 15px; white-space: nowrap; }
+.csl-barra .pista { height: 10px; background: #EFE8DD; border-radius: 2px; margin-top: 5px; overflow: hidden; }
+.csl-barra .relleno { height: 100%; background: var(--negro); border-radius: 2px; }
+.csl-barra:first-child .relleno { background: var(--rojo); }
+.csl-barra .p { font-size: 12px; color: var(--gris); margin-top: 3px; }
+.csl-barras .tot { display: flex; justify-content: space-between; border-top: 1px solid var(--borde);
+                   padding: 10px 0 6px; font-family: 'Roboto Slab', Rockwell, Georgia, serif; font-weight: 700; }
 .csl-vacio { background: #fff; border: 1px dashed var(--borde); border-radius: 6px; padding: 14px; color: var(--gris);
              text-align: center; font-size: 14px; }
 </style>
@@ -247,3 +259,23 @@ def vacio(texto):
 def color_estado(v):
     c = COLORES_ESTADO.get(v)
     return f"color: {c}; font-weight: 700" if c else ""
+
+
+MESES_LARGOS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre",
+                "octubre", "noviembre", "diciembre"]
+
+
+def nombre_mes(aaaa_mm):
+    a, m = aaaa_mm.split("-")
+    return f"{MESES_LARGOS[int(m) - 1].capitalize()} {a}"
+
+
+def barras(filas, total_txt):
+    """filas: [(nombre, monto, monto_txt)] ordenadas de mayor a menor."""
+    maximo = max((m for _, m, _ in filas), default=0) or 1
+    tot = sum(m for _, m, _ in filas) or 1
+    cuerpo = "".join(
+        f'<div class="csl-barra"><div class="top"><span class="n">{_h(n)}</span><span class="v">{_h(t)}</span></div>'
+        f'<div class="pista"><div class="relleno" style="width:{max(m / maximo * 100, 1.5):.1f}%"></div></div>'
+        f'<div class="p">{m / tot * 100:.0f}% del mes</div></div>' for n, m, t in filas)
+    _md(f'<div class="csl-barras">{cuerpo}<div class="tot"><span>Total del mes</span><span>{_h(total_txt)}</span></div></div>')
