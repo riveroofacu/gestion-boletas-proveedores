@@ -61,9 +61,11 @@ def num(x):
 
 
 def dmy(iso):
-    if not iso:
+    """aaaa-mm-dd -> dd/mm/aaaa. Vacío si no hay fecha (None, NaN de pandas, etc.)."""
+    partes = str(iso)[:10].split("-") if iso is not None else []
+    if len(partes) != 3:
         return ""
-    a, m, d = str(iso)[:10].split("-")
+    a, m, d = partes
     return f"{d}/{m}/{a}"
 
 
@@ -379,6 +381,7 @@ def pagina_pagos():
         df = pd.DataFrame(pg)
         df["Fecha"] = df["fecha_pago"].map(dmy)
         df["Cobro"] = df["fecha_cobro"].map(dmy)
+        df["nro_cheque"] = df["nro_cheque"].fillna("")
         df["Monto"] = df["monto"].map(pesos)
         df["A favor"] = (df["monto"] - df["asignado"]).map(lambda x: pesos(x) if x > db.TOL else "")
         st.dataframe(df[["Fecha", "proveedor", "medio", "Monto", "nro_cheque", "Cobro", "A favor"]]
