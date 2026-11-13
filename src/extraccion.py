@@ -212,8 +212,28 @@ def fecha_despues_del_numero(textos):
     return None
 
 
-def fecha_casillas(l, etiqueta="fecha"):
-    """Fecha manuscrita en casillas debajo de FECHA: junta los números de izquierda a derecha."""
+DIAS_ATRAS, DIAS_ADELANTE = 90, 7   # una boleta se carga, como mucho, unos meses después de llegar
+
+
+def fecha_razonable(f, hoy=None):
+    hoy = hoy or date.today()
+    return -DIAS_ADELANTE <= (hoy - f).days <= DIAS_ATRAS
+
+
+def fecha_casillas(l, etiqueta="fecha", hoy=None):
+    """Fecha manuscrita en casillas debajo de FECHA. Prueba primero la lectura directa y, si no da
+    una fecha razonable (cercana a hoy), prueba cortar los dígitos de otras formas. Si nada da una
+    fecha razonable, devuelve None: mejor un campo vacío que una fecha inventada."""
+    f = _fecha_casillas(l, etiqueta, hoy)
+    if f:
+        d, m, a = map(int, f.split("/"))
+        if fecha_razonable(date(a, m, d), hoy):
+            return f
+    return None
+
+
+def _fecha_casillas(l, etiqueta="fecha", hoy=None):
+    """Junta los números de las casillas debajo de FECHA, de izquierda a derecha."""
     T, C = l["textos"], l["cajas"]
     for i, t in enumerate(T):
         if etiqueta not in sin_espacios(t) or len(t) > 12:
@@ -226,6 +246,7 @@ def fecha_casillas(l, etiqueta="fecha"):
                     and a2 > x1 - 2 * ancho and a1 < x2 + 2 * ancho):
                 piezas.append((a1, u))
         numeros = re.findall(r"\d+", " ".join(u for _, u in sorted(piezas)))
+        crudos = list(numeros)
         if len(numeros) == 2 and len(numeros[1]) == 4:
             numeros = [numeros[0], numeros[1][:2], numeros[1][2:]]
         elif len(numeros) == 2 and len(numeros[0]) == 4:
@@ -235,8 +256,51 @@ def fecha_casillas(l, etiqueta="fecha"):
             if len(a) == 2:
                 a = "20" + a
             if 1 <= int(d) <= 31 and 1 <= int(m) <= 12:
-                return f"{int(d):02d}/{int(m):02d}/{a}"
+                try:
+                    if fecha_razonable(date(int(a), int(m), int(d)), hoy):
+                        return f"{int(d):02d}/{int(m):02d}/{a}"
+                except ValueError:
+                    pass
+        # Agregado el 13/11/2026, después de la prueba en el local: con el día de un dígito
+        # (5/11/26) el OCR junta casillas ("511") y lo de arriba no sabe separarlas.
+        fecha = fecha_por_cortes(crudos, hoy)
+        if fecha:
+            return fecha
     return None
+
+
+def fecha_por_cortes(numeros, hoy=None):
+    """Prueba todas las formas de cortar los dígitos en día, mes y año (de 2 o 4 cifras),
+    respetando dónde el OCR ya separó, y se queda con la fecha razonable más cercana a hoy.
+    Devuelve dd/mm/aaaa o None."""
+    hoy = hoy or date.today()
+    digitos = "".join(numeros)
+    cortes_ocr = set()
+    pos = 0
+    for n in numeros[:-1]:
+        pos += len(n)
+        cortes_ocr.add(pos)
+    candidatas = set()
+    for ld in (1, 2):
+        for lm in (1, 2):
+            for la in (2, 4):
+                if ld + lm + la != len(digitos):
+                    continue
+                # un corte del OCR no puede caer en el medio del día, el mes o el año
+                if any(c not in (ld, ld + lm) for c in cortes_ocr):
+                    continue
+                d, m, a = int(digitos[:ld]), int(digitos[ld:ld + lm]), digitos[ld + lm:]
+                anio = int(a) + 2000 if la == 2 else int(a)
+                try:
+                    f = date(anio, m, d)
+                except ValueError:
+                    continue
+                if fecha_razonable(f, hoy):
+                    candidatas.add(f)
+    if not candidatas:
+        return None
+    f = min(candidatas, key=lambda x: abs((hoy - x).days))
+    return f.strftime("%d/%m/%Y")
 
 
 def total_mano(l):
