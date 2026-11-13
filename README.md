@@ -41,11 +41,28 @@ Se armó un dataset de 53 fotos de comprobantes reales, etiquetadas a mano, y se
 | Comprobantes completos | 63% | 47% |
 | Correcciones por comprobante | 0,63 | 0,92 |
 | Campos con un valor incorrecto | 2 | 17 |
+| Precisión, recall y F1 (todos los campos) | 0,98 / 0,84 / 0,91 | 0,88 / 0,84 / 0,86 |
 | Tiempo por foto | 41 s sin GPU | 17 s con GPU |
 
 Se eligió **OCR más reglas**. Es más exacto, casi nunca devuelve un dato equivocado (cuando falla deja el campo vacío) y funciona sin placa de video. El modelo de visión inventó valores que parecían válidos, como kilos en comprobantes que no los tienen.
 
-Con los errores de esa ronda se corrigieron las reglas de forma general. La versión corregida se evalúa con boletas nuevas en una **prueba de uso en el local**, donde el sistema registra lo que leyó y lo que confirmó el usuario. Los resultados se suman al finalizar la prueba.
+Ninguno de los dos enfoques confundió un proveedor con otro. Cuando fallan, dejan el comprobante sin identificar.
+
+### Segunda ronda, prueba en el local
+
+Con los errores de la primera ronda se corrigieron las reglas de forma general. La versión corregida se probó en el local del 9 al 12 de noviembre de 2026 con **18 boletas nuevas** de cinco proveedores. El sistema guarda lo que leyó y lo que confirmó el usuario, y `evaluar_campo.py` calcula las métricas. Las reglas no se tocaron durante la prueba.
+
+| Métrica | Umbral | Segunda ronda |
+| --- | --- | --- |
+| Proveedor identificado | 95% | 18/18 (100%) |
+| Campos de boletas impresas | 90% | 33/33 (100%) |
+| Campos de notas manuscritas | 75% | 11/19 (58%) |
+| Comprobantes completos | 70% | 11/18 (61%) |
+| Correcciones por boleta | 1 como máximo | 0,44 |
+| Tiempo de lectura | 60 s como máximo | 27 s en promedio |
+| Carga con la revisión del usuario | menos de 1 minuto | mediana 53 s |
+
+Las boletas impresas salieron todas completas. Los errores se concentran en las notas escritas a mano, sobre todo en la fecha.
 
 ## Herramientas
 
@@ -96,4 +113,4 @@ Las fotos de los comprobantes, la planilla de referencia, la lista real de prove
 - [x] Dataset de 53 fotos etiquetado
 - [x] Comparación OCR más reglas frente a modelo de visión
 - [x] Aplicación con carga de boletas, pagos, panel y avisos
-- [ ] Prueba de uso en el local y resultados de la segunda ronda
+- [x] Prueba de uso en el local y resultados de la segunda ronda
